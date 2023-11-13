@@ -23,6 +23,7 @@ import pickle
 import os
 
 
+
 class BaseDeepAD(metaclass=ABCMeta):
     """
     Abstract class for deep outlier detection models
