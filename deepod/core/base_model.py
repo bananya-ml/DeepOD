@@ -20,6 +20,8 @@ from ray.tune.schedulers import ASHAScheduler
 from functools import partial
 from deepod.utils.utility import get_sub_seqs, get_sub_seqs_label
 import pickle
+import os
+
 
 class BaseDeepAD(metaclass=ABCMeta):
     """
@@ -94,6 +96,7 @@ class BaseDeepAD(metaclass=ABCMeta):
         ``threshold_`` on ``decision_scores_``.
 
     """
+
     def __init__(self, model_name, data_type='tabular', network='MLP',
                  epochs=100, batch_size=64, lr=1e-3,
                  n_ensemble=1, seq_len=100, stride=1,
@@ -171,7 +174,8 @@ class BaseDeepAD(metaclass=ABCMeta):
 
         if self.data_type == 'ts':
             X_seqs = get_sub_seqs(X, seq_len=self.seq_len, stride=self.stride)
-            y_seqs = get_sub_seqs_label(y, seq_len=self.seq_len, stride=self.stride) if y is not None else None
+            y_seqs = get_sub_seqs_label(
+                y, seq_len=self.seq_len, stride=self.stride) if y is not None else None
             self.train_data = X_seqs
             self.train_label = y_seqs
             self.n_samples, self.n_features = X_seqs.shape[0], X_seqs.shape[2]
@@ -184,7 +188,8 @@ class BaseDeepAD(metaclass=ABCMeta):
             print('Start Training...')
 
         if self.n_ensemble == 'auto':
-            self.n_ensemble = int(np.floor(100 / (np.log(self.n_samples) + self.n_features)) + 1)
+            self.n_ensemble = int(
+                np.floor(100 / (np.log(self.n_samples) + self.n_features)) + 1)
         if self.verbose >= 1:
             print(f'ensemble size: {self.n_ensemble}')
 
@@ -234,7 +239,8 @@ class BaseDeepAD(metaclass=ABCMeta):
         """
         if self.data_type == 'ts':
             self.train_data = get_sub_seqs(X, self.seq_len, self.stride)
-            self.train_label = get_sub_seqs_label(y, self.seq_len, self.stride) if y is not None else None
+            self.train_label = get_sub_seqs_label(
+                y, self.seq_len, self.stride) if y is not None else None
             self.n_samples, self.n_features = self.train_data.shape[0], self.train_data.shape[2]
 
         elif self.data_type == 'tabular':
@@ -260,28 +266,35 @@ class BaseDeepAD(metaclass=ABCMeta):
         if size >= 30:
             split = int(len(self.train_data) / (size / 30))
             self.train_data = self.train_data[:split]
-            self.train_label = self.train_label[:split] if y is not None else None
-            warnings.warn('split training data to meet the 95 MiB limit of ray ImplitFunc')
+            self.train_label = self.train_label[:
+                                                split] if y is not None else None
+            warnings.warn(
+                'split training data to meet the 95 MiB limit of ray ImplitFunc')
 
         result = tune.run(
             partial(self._training_ray,
                     X_test=X_test, y_test=y_test),
-            resources_per_trial={"cpu": 4, "gpu": 0 if self.device == 'cpu' else 1},
+            resources_per_trial={
+                "cpu": 4, "gpu": 0 if self.device == 'cpu' else 1},
             config=config,
             num_samples=n_ray_samples,
             time_budget_s=time_budget_s,
             scheduler=scheduler,
         )
 
-        best_trial = result.get_best_trial(metric=metric, mode=mode, scope="last")
+        best_trial = result.get_best_trial(
+            metric=metric, mode=mode, scope="last")
         print(f"Best trial config: {best_trial.config}")
-        print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
-        print(f"Best trial final testing metric: {best_trial.last_result['metric']}")
+        print(
+            f"Best trial final validation loss: {best_trial.last_result['loss']}")
+        print(
+            f"Best trial final testing metric: {best_trial.last_result['metric']}")
 
         # tuned results
         best_checkpoint = best_trial.checkpoint.to_air_checkpoint().to_dict()
         best_config = best_trial.config
-        self.load_ray_checkpoint(best_config=best_config, best_checkpoint=best_checkpoint)
+        self.load_ray_checkpoint(
+            best_config=best_config, best_checkpoint=best_checkpoint)
 
         best_config['epochs'] = best_checkpoint['epoch']
 
@@ -388,7 +401,8 @@ class BaseDeepAD(metaclass=ABCMeta):
         """
         n = len(self.decision_scores_)
 
-        count_instances = np.vectorize(lambda x: np.count_nonzero(self.decision_scores_ <= x))
+        count_instances = np.vectorize(
+            lambda x: np.count_nonzero(self.decision_scores_ <= x))
         n_instances = count_instances(test_scores)
 
         # Derive the outlier probability using Bayesian approach
@@ -399,7 +413,7 @@ class BaseDeepAD(metaclass=ABCMeta):
             lambda p: 1 - binom.cdf(n - int(n*self.contamination), n, p)
         )(posterior_prob)
         prediction = (test_scores > self.threshold_).astype('int').ravel()
-        np.place(confidence, prediction==0, 1-confidence[prediction == 0])
+        np.place(confidence, prediction == 0, 1-confidence[prediction == 0])
         return confidence
 
     def _process_decision_scores(self):
@@ -413,8 +427,10 @@ class BaseDeepAD(metaclass=ABCMeta):
         self
         """
 
-        self.threshold_ = np.percentile(self.decision_scores_, 100 * (1 - self.contamination))
-        self.labels_ = (self.decision_scores_ > self.threshold_).astype('int').ravel()
+        self.threshold_ = np.percentile(
+            self.decision_scores_, 100 * (1 - self.contamination))
+        self.labels_ = (self.decision_scores_ >
+                        self.threshold_).astype('int').ravel()
 
         self._mu = np.mean(self.decision_scores_)
         self._sigma = np.std(self.decision_scores_)
@@ -422,7 +438,8 @@ class BaseDeepAD(metaclass=ABCMeta):
         return self
 
     def _training(self):
-        optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr, eps=1e-6)
+        optimizer = torch.optim.Adam(
+            self.net.parameters(), lr=self.lr, eps=1e-6)
 
         self.net.train()
         for i in range(self.epochs):
@@ -458,6 +475,111 @@ class BaseDeepAD(metaclass=ABCMeta):
     def _training_ray(self, config, X_test, y_test):
         return
 
+    def save_model(self, save_path):
+        """
+        Save the trained model to a file.
+
+        Parameters
+        ----------
+        save_path : str
+            The path where the model will be saved.
+        """
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
+        model_info = {
+            'model_name': self.model_name,
+            'data_type': self.data_type,
+            'network': self.network,
+            'seq_len': self.seq_len,
+            'stride': self.stride,
+            'epochs': self.epochs,
+            'batch_size': self.batch_size,
+            'lr': self.lr,
+            'device': self.device,
+            'contamination': self.contamination,
+            'n_ensemble': self.n_ensemble,
+            'verbose': self.verbose,
+            'random_state': self.random_state
+        }
+
+        model_state = {
+            'net_state_dict': self.net.state_dict(),
+            'criterion': self.criterion,
+            'decision_scores_': self.decision_scores_,
+            'labels_': self.labels_,
+            'threshold_': self.threshold_,
+            'epoch_time': self.epoch_time
+        }
+
+        save_info_path = os.path.join(save_path, 'model_info.pth')
+        save_state_path = os.path.join(save_path, 'model_state.pth')
+
+        torch.save(model_info, save_info_path)
+        torch.save(model_state, save_state_path)
+
+        print(f"\nModel saved successfully at {save_path}\n")
+
+    def load_model(self, load_path):
+        """
+        Load a pre-trained model and its relevant information.
+
+        Parameters
+        ----------
+        load_path : str
+            The path from which the model will be loaded.
+        """
+        model_info_path = os.path.join(load_path, 'model_info.pth')
+        model_state_path = os.path.join(load_path, 'model_state.pth')
+
+        model_info = torch.load(model_info_path)
+        model_state = torch.load(model_state_path)
+
+        self.model_name = model_info['model_name']
+        self.data_type = model_info['data_type']
+        self.network = model_info['network']
+        self.seq_len = model_info['seq_len']
+        self.stride = model_info['stride']
+        self.epochs = model_info['epochs']
+        self.batch_size = model_info['batch_size']
+        self.lr = model_info['lr']
+        self.device = model_info['device']
+        self.contamination = model_info['contamination']
+        self.n_ensemble = model_info['n_ensemble']
+        self.verbose = model_info['verbose']
+        self.random_state = model_info['random_state']
+
+        self.criterion = model_state['criterion']
+        self.decision_scores_ = model_state['decision_scores_']
+        self.labels_ = model_state['labels_']
+        self.threshold_ = model_state['threshold_']
+        self.epoch_time = model_state['epoch_time']
+
+        # Build the network based on the loaded model information
+        network_params = {
+            'n_features': self.n_features,
+            'n_hidden': self.hidden_dims,
+            'n_output': self.rep_dim,
+            'activation': self.act,
+            'bias': self.bias
+        }
+
+        if self.network == 'Transformer':
+            network_params['n_heads'] = self.n_heads
+            network_params['d_model'] = self.d_model
+            network_params['pos_encoding'] = self.pos_encoding
+            network_params['norm'] = self.norm
+            network_params['attn'] = self.attn
+            network_params['seq_len'] = self.seq_len
+        elif self.network == 'ConvSeq':
+            network_params['seq_len'] = self.seq_len
+
+        network_class = get_network(self.network)
+        self.net = network_class(**network_params).to(self.device)
+        self.net.load_state_dict(model_state['net_state_dict'])
+
+        print(f"Model loaded successfully from {load_path}")
+
     def _inference(self):
         self.net.eval()
         with torch.no_grad():
@@ -470,7 +592,8 @@ class BaseDeepAD(metaclass=ABCMeta):
                 _iter_ = self.test_loader
 
             for batch_x in _iter_:
-                batch_z, s = self.inference_forward(batch_x, self.net, self.criterion)
+                batch_z, s = self.inference_forward(
+                    batch_x, self.net, self.criterion)
                 z_lst.append(batch_z)
                 score_lst.append(s)
 
@@ -536,4 +659,3 @@ class BaseDeepAD(metaclass=ABCMeta):
         random.seed(seed)
         # torch.backends.cudnn.benchmark = False
         # torch.backends.cudnn.deterministic = True
-

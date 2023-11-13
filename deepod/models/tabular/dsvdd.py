@@ -64,6 +64,7 @@ class DeepSVDD(BaseDeepAD):
         the seed used by the random
 
     """
+
     def __init__(self, epochs=100, batch_size=64, lr=1e-3,
                  rep_dim=128, hidden_dims='100,50', act='ReLU', bias=False,
                  epoch_steps=-1, prt_steps=10, device='cuda',
@@ -126,15 +127,18 @@ class DeepSVDD(BaseDeepAD):
         train_data = self.train_data[:int(0.8 * len(self.train_data))]
         val_data = self.train_data[int(0.8 * len(self.train_data)):]
 
-        train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=True)
-        val_loader = DataLoader(val_data, batch_size=self.batch_size, shuffle=True)
+        train_loader = DataLoader(
+            train_data, batch_size=self.batch_size, shuffle=True)
+        val_loader = DataLoader(
+            val_data, batch_size=self.batch_size, shuffle=True)
 
         self.net = self.set_tuned_net(config)
 
         self.c = self._set_c(self.net, train_loader)
         criterion = DSVDDLoss(c=self.c, reduction='mean')
 
-        optimizer = torch.optim.Adam(self.net.parameters(), lr=config['lr'], eps=1e-6)
+        optimizer = torch.optim.Adam(
+            self.net.parameters(), lr=config['lr'], eps=1e-6)
 
         self.net.train()
         for i in range(config['epochs']):
@@ -165,7 +169,8 @@ class DeepSVDD(BaseDeepAD):
             test_metric = -1
             if X_test is not None and y_test is not None:
                 scores = self.decision_function(X_test)
-                test_metric = tabular_metrics(y_test, scores)[0]  # use adjusted Best-F1
+                test_metric = tabular_metrics(y_test, scores)[
+                    0]  # use adjusted Best-F1
 
             t = time.time() - t1
             if self.verbose >= 1 and (i == 0 or (i+1) % self.prt_steps == 0):
@@ -186,6 +191,28 @@ class DeepSVDD(BaseDeepAD):
                 {"loss": val_loss, "metric": test_metric},
                 checkpoint=checkpoint,
             )
+
+    def save_model(self, save_path):
+        """
+        Save the trained model to a file.
+
+        Parameters
+        ----------
+        save_path : str
+            The path where the model will be saved.
+        """
+        super().save_model(save_path)
+
+    def load_model(self, load_path):
+        """
+        Load a pre-trained model and its relevant information.
+
+        Parameters
+        ----------
+        load_path : str
+            The path from which the model will be loaded.
+        """
+        super().load_model(load_path)
 
     def load_ray_checkpoint(self, best_config, best_checkpoint):
         self.net = self.set_tuned_net(best_config)
@@ -246,6 +273,7 @@ class DSVDDLoss(torch.nn.Module):
             - If ``'sum'``: the output will be summed
 
     """
+
     def __init__(self, c, reduction='mean'):
         super(DSVDDLoss, self).__init__()
         self.c = c
